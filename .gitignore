@@ -1,8 +1,11 @@
 ﻿bin/
 obj/
 .idea/
+.vscode/
 .vs/
 *.user
 *.db
 *.db-shm
 *.db-wal
+
+.fake

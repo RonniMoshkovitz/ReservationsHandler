@@ -1,10 +1,15 @@
+using ReservationsHandler.Api.Data;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddDataAccess();
 
 var app = builder.Build();
+
+await app.InitializeDatabaseAsync();
 
 if (app.Environment.IsDevelopment())
 {

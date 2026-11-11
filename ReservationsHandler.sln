@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# 
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReservationsHandler.Api", "ReservationsHandler.Api\ReservationsHandler.Api.csproj", "{7BE9A436-8D71-4A5D-86AF-98499E668B74}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReservationsHandler.Api.Tests", "ReservationsHandler.Api.Tests\ReservationsHandler.Api.Tests.csproj", "{215DDA5A-1E67-4F28-83A3-E09E63362165}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7BE9A436-8D71-4A5D-86AF-98499E668B74}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7BE9A436-8D71-4A5D-86AF-98499E668B74}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7BE9A436-8D71-4A5D-86AF-98499E668B74}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7BE9A436-8D71-4A5D-86AF-98499E668B74}.Release|Any CPU.Build.0 = Release|Any CPU
+		{215DDA5A-1E67-4F28-83A3-E09E63362165}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{215DDA5A-1E67-4F28-83A3-E09E63362165}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{215DDA5A-1E67-4F28-83A3-E09E63362165}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{215DDA5A-1E67-4F28-83A3-E09E63362165}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

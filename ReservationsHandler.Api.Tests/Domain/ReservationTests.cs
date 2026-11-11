@@ -73,4 +73,70 @@ public class ReservationTests
     {
         Assert.Throws<ArgumentNullException>(() => Create().SameDetailsAs(null!));
     }
+
+    [Test]
+    public void Evaluate_NothingStored_IsCreated()
+    {
+        Assert.That(Reservation.Evaluate(null, Create()), Is.EqualTo(IngestStatus.Created));
+    }
+
+    [Test]
+    public void Evaluate_IdenticalDetails_IsDuplicate()
+    {
+        Assert.That(Reservation.Evaluate(Create(), Create()), Is.EqualTo(IngestStatus.Duplicate));
+    }
+
+    [Test]
+    public void Evaluate_IdenticalDetailsInDifferentOffsets_IsDuplicate()
+    {
+        var incoming = Create() with { UpdatedAtUtc = UpdatedAt.ToOffset(TimeSpan.FromHours(5)) };
+
+        Assert.That(Reservation.Evaluate(Create(), incoming), Is.EqualTo(IngestStatus.Duplicate));
+    }
+
+    [Test]
+    public void Evaluate_DifferentDetailsWithNewerUpdate_IsUpdated()
+    {
+        var incoming = Create() with { Price = 500m, UpdatedAtUtc = UpdatedAt.AddMinutes(1) };
+
+        Assert.That(Reservation.Evaluate(Create(), incoming), Is.EqualTo(IngestStatus.Updated));
+    }
+
+    [Test]
+    public void Evaluate_DifferentDetailsWithSameUpdatedAt_IsUpdated_NotStale()
+    {
+        var incoming = Create() with { Price = 500m };
+
+        Assert.That(Reservation.Evaluate(Create(), incoming), Is.EqualTo(IngestStatus.Updated));
+    }
+
+    [Test]
+    public void Evaluate_DifferentDetailsWithOlderUpdate_IsStale()
+    {
+        var incoming = Create() with { Price = 500m, UpdatedAtUtc = UpdatedAt.AddMinutes(-1) };
+
+        Assert.That(Reservation.Evaluate(Create(), incoming), Is.EqualTo(IngestStatus.Stale));
+    }
+
+    [Test]
+    public void Evaluate_OnlyUpdatedAtDiffersAndIsOlder_IsStale()
+    {
+        var incoming = Create() with { UpdatedAtUtc = UpdatedAt.AddMinutes(-1) };
+
+        Assert.That(Reservation.Evaluate(Create(), incoming), Is.EqualTo(IngestStatus.Stale));
+    }
+
+    [Test]
+    public void Evaluate_OnlyUpdatedAtDiffersAndIsNewer_IsUpdated()
+    {
+        var incoming = Create() with { UpdatedAtUtc = UpdatedAt.AddMinutes(1) };
+
+        Assert.That(Reservation.Evaluate(Create(), incoming), Is.EqualTo(IngestStatus.Updated));
+    }
+
+    [Test]
+    public void Evaluate_NullIncoming_Throws()
+    {
+        Assert.Throws<ArgumentNullException>(() => Reservation.Evaluate(Create(), null!));
+    }
 }

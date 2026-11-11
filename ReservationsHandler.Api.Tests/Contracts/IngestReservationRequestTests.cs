@@ -121,6 +121,17 @@ public class IngestReservationRequestTests
     }
 
     [Test]
+    public void CheckOutThatLooksLaterOnTheClockButIsEarlierInTime_FailsValidation()
+    {
+        var checkIn = new DateTimeOffset(2026, 8, 1, 1, 0, 0, TimeSpan.Zero);
+        var checkOut = new DateTimeOffset(2026, 8, 1, 2, 0, 0, TimeSpan.FromHours(3));
+
+        var results = Validate(new Values { CheckIn = checkIn, CheckOut = checkOut });
+
+        Assert.That(FailingMembers(results), Does.Contain(nameof(Values.CheckOut)));
+    }
+
+    [Test]
     public void MissingCheckOut_ReportsOnlyTheMissingField_WithoutThrowing()
     {
         List<ValidationResult> results = null!;

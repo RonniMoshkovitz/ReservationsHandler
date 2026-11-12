@@ -1,5 +1,6 @@
 using ReservationsHandler.Api.Data;
 using ReservationsHandler.Api.RateLimiting;
+using ReservationsHandler.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,6 +9,9 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddDataAccess();
 builder.Services.AddRateLimiting();
+
+// A singleton is safe: the service is stateless and only depends on singletons (limiter and repositories).
+builder.Services.AddSingleton<IReservationIngestionService, ReservationIngestionService>();
 
 var app = builder.Build();
 

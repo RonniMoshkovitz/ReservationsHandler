@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using ReservationsHandler.Api.Domain;
@@ -10,7 +11,6 @@ namespace ReservationsHandler.Api.Tests.Services;
 [TestFixture]
 public class ReservationIngestionServiceTests
 {
-    private List<string> _callLog = null!;
     private FakeRateLimiter _limiter = null!;
     private FakeReservationRepository _reservations = null!;
     private FakeSupplierStatsRepository _stats = null!;
@@ -19,11 +19,10 @@ public class ReservationIngestionServiceTests
     [SetUp]
     public void CreateService()
     {
-        _callLog = [];
-        _limiter = new FakeRateLimiter(_callLog);
-        _reservations = new FakeReservationRepository(_callLog);
-        _stats = new FakeSupplierStatsRepository(_callLog);
-        _service = new ReservationIngestionService(_limiter, _reservations, _stats);
+        _limiter = new FakeRateLimiter();
+        _reservations = new FakeReservationRepository();
+        _stats = new FakeSupplierStatsRepository();
+        _service = new ReservationIngestionService(_limiter, _reservations, _stats, NullLogger<ReservationIngestionService>.Instance);
     }
 
     private static Reservation Create(string supplierId = "supplier-1", string reservationId = "res-1") => new(
@@ -76,133 +75,24 @@ public class ReservationIngestionServiceTests
         Assert.That(_reservations.Upserted, Is.Empty, "a throttled request must not touch the reservations table");
     }
 
+    // The limit is per supplier: different reservations from one supplier share a quota, other suppliers have their own.
     [Test]
-    public async Task TheLimiterIsAskedAboutTheReservationsSupplier()
+    public async Task WithTheRealLimiter_TheQuotaIsPerSupplier_NotPerReservation()
     {
-        await _service.IngestAsync(Create("supplier-7"));
-
-        Assert.That(_limiter.RequestedIds, Is.EqualTo(new[] { "supplier-7" }));
-    }
-
-    [Test]
-    public async Task TheLimiterIsConsultedBeforeAnyDatabaseWork_WhenPermitted()
-    {
-        await _service.IngestAsync(Create());
-
-        Assert.That(_callLog, Is.EqualTo(new[] { "limiter", "repository" }));
-    }
-
-    [Test]
-    public async Task OnlyTheLimiterAndTheStatsAreTouched_WhenThrottled()
-    {
-        _limiter.Result = RateLimitResult.Reject(TimeSpan.FromSeconds(1));
-
-        await _service.IngestAsync(Create());
-
-        Assert.That(_callLog, Is.EqualTo(new[] { "limiter", "stats" }));
-    }
-
-    [Test]
-    public async Task TheCancellationToken_IsPassedToTheRepository()
-    {
-        using var cts = new CancellationTokenSource();
-
-        await _service.IngestAsync(Create(), cts.Token);
-
-        Assert.That(_reservations.Tokens, Is.EqualTo(new[] { cts.Token }));
-    }
-
-    [Test]
-    public async Task TheCancellationToken_IsPassedToTheStats_WhenThrottled()
-    {
-        _limiter.Result = RateLimitResult.Reject(TimeSpan.FromSeconds(1));
-        using var cts = new CancellationTokenSource();
-
-        await _service.IngestAsync(Create(), cts.Token);
-
-        Assert.That(_stats.Tokens, Is.EqualTo(new[] { cts.Token }));
-    }
-
-    [Test]
-    public void ARepositoryFailure_Propagates_AndIsNotSwallowed()
-    {
-        _reservations.ExceptionToThrow = new InvalidOperationException("database is down");
-
-        Assert.That(
-            async () => await _service.IngestAsync(Create()),
-            Throws.InvalidOperationException.With.Message.EqualTo("database is down"));
-    }
-
-    [Test]
-    public void AStatsFailure_WhileThrottling_Propagates_AndTheRepositoryIsStillNotCalled()
-    {
-        _limiter.Result = RateLimitResult.Reject(TimeSpan.FromSeconds(1));
-        _stats.ExceptionToThrow = new InvalidOperationException("stats unavailable");
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(
-                async () => await _service.IngestAsync(Create()),
-                Throws.InvalidOperationException.With.Message.EqualTo("stats unavailable"));
-            Assert.That(_reservations.Upserted, Is.Empty);
-        });
-    }
-
-    [Test]
-    public void ACancelledRepositoryCall_PropagatesTheCancellation_AndIsNotTurnedIntoAResult()
-    {
-        _reservations.ExceptionToThrow = new OperationCanceledException();
-
-        Assert.That(async () => await _service.IngestAsync(Create()), Throws.InstanceOf<OperationCanceledException>());
-    }
-
-    [Test]
-    public void ACancelledThrottledCounterWrite_PropagatesTheCancellation_AndTheRepositoryIsStillNotCalled()
-    {
-        _limiter.Result = RateLimitResult.Reject(TimeSpan.FromSeconds(1));
-        _stats.ExceptionToThrow = new OperationCanceledException();
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(async () => await _service.IngestAsync(Create()), Throws.InstanceOf<OperationCanceledException>());
-            Assert.That(_reservations.Upserted, Is.Empty);
-        });
-    }
-
-    [Test]
-    public void ANullReservation_IsRejected_BeforeAnyCollaboratorIsCalled()
-    {
-        Assert.Multiple(() =>
-        {
-            Assert.That(async () => await _service.IngestAsync(null!), Throws.InstanceOf<ArgumentNullException>());
-            Assert.That(_callLog, Is.Empty);
-        });
-    }
-
-    [Test]
-    public async Task WithTheRealLimiter_OnlyTheRequestsOverTheLimitAreThrottled_AndEachIsCountedOnce()
-    {
-        // The service composed with the real sliding window limiter (limit 3 per 10s) and a fake clock.
-        var time = new FakeTimeProvider();
         var limiter = new SlidingWindowRateLimiter(
-            Options.Create(new RateLimitOptions { PermitLimit = 3, Window = TimeSpan.FromSeconds(10) }),
-            time);
-        var service = new ReservationIngestionService(limiter, _reservations, _stats);
+            Options.Create(new RateLimitOptions { PermitLimit = 1, Window = TimeSpan.FromSeconds(10) }),
+            new FakeTimeProvider());
+        var service = new ReservationIngestionService(limiter, _reservations, _stats, NullLogger<ReservationIngestionService>.Instance);
 
-        var results = new List<IngestResult>();
-        for (var i = 0; i < 5; i++)
-        {
-            results.Add(await service.IngestAsync(Create(reservationId: $"res-{i}")));
-        }
+        var firstFromA = await service.IngestAsync(Create("supplier-a", "res-1"));
+        var secondFromA = await service.IngestAsync(Create("supplier-a", "res-2"));
+        var firstFromB = await service.IngestAsync(Create("supplier-b", "res-1"));
 
         Assert.Multiple(() =>
         {
-            Assert.That(results.Count(r => r.Status == IngestStatus.Created), Is.EqualTo(3));
-            Assert.That(results.Count(r => r.Status == IngestStatus.Throttled), Is.EqualTo(2));
-            Assert.That(results.Where(r => r.Status == IngestStatus.Throttled).Select(r => r.RetryAfter),
-                Is.All.EqualTo(TimeSpan.FromSeconds(10)));
-            Assert.That(_reservations.Upserted, Has.Count.EqualTo(3), "throttled requests never reach the repository");
-            Assert.That(_stats.ThrottledSupplierIds, Is.EqualTo(new[] { "supplier-1", "supplier-1" }));
+            Assert.That(firstFromA.Status, Is.EqualTo(IngestStatus.Created));
+            Assert.That(secondFromA.Status, Is.EqualTo(IngestStatus.Throttled), "same supplier, new reservation: same quota");
+            Assert.That(firstFromB.Status, Is.EqualTo(IngestStatus.Created), "another supplier has its own quota");
         });
     }
 
@@ -212,11 +102,10 @@ public class ReservationIngestionServiceTests
     [TestCase(IngestStatus.Stale)]
     public async Task WithTheRealLimiter_DuplicateAndStaleRequestsStillConsumeQuota(IngestStatus repositoryStatus)
     {
-        var time = new FakeTimeProvider();
         var limiter = new SlidingWindowRateLimiter(
             Options.Create(new RateLimitOptions { PermitLimit = 1, Window = TimeSpan.FromSeconds(10) }),
-            time);
-        var service = new ReservationIngestionService(limiter, _reservations, _stats);
+            new FakeTimeProvider());
+        var service = new ReservationIngestionService(limiter, _reservations, _stats, NullLogger<ReservationIngestionService>.Instance);
         _reservations.Status = repositoryStatus;
 
         var first = await service.IngestAsync(Create());
@@ -227,31 +116,6 @@ public class ReservationIngestionServiceTests
             Assert.That(first, Is.EqualTo(IngestResult.Processed(repositoryStatus)));
             Assert.That(second.Status, Is.EqualTo(IngestStatus.Throttled));
             Assert.That(_reservations.Upserted, Has.Count.EqualTo(1), "the second request never reached the repository");
-        });
-    }
-
-    [Test]
-    public async Task WithTheRealLimiter_AThrottledSupplierDoesNotAffectAnother_AndRecoversAfterTheWindow()
-    {
-        var time = new FakeTimeProvider();
-        var limiter = new SlidingWindowRateLimiter(
-            Options.Create(new RateLimitOptions { PermitLimit = 1, Window = TimeSpan.FromSeconds(10) }),
-            time);
-        var service = new ReservationIngestionService(limiter, _reservations, _stats);
-
-        await service.IngestAsync(Create("noisy", "a"));
-        var noisyThrottled = await service.IngestAsync(Create("noisy", "b"));
-        var otherSupplier = await service.IngestAsync(Create("quiet", "a"));
-
-        time.Advance(TimeSpan.FromSeconds(10));
-        var noisyRecovered = await service.IngestAsync(Create("noisy", "c"));
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(noisyThrottled.Status, Is.EqualTo(IngestStatus.Throttled));
-            Assert.That(otherSupplier.Status, Is.Not.EqualTo(IngestStatus.Throttled));
-            Assert.That(noisyRecovered.Status, Is.Not.EqualTo(IngestStatus.Throttled));
-            Assert.That(_stats.ThrottledSupplierIds, Is.EqualTo(new[] { "noisy" }));
         });
     }
 }

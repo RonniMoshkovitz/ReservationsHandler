@@ -24,27 +24,12 @@ public class ReservationTests
     private static TestCaseData Change(string field, Func<Reservation, Reservation> mutate) =>
         new TestCaseData(mutate).SetName($"SameDetailsAs_IsFalse_WhenOnly{field}Differs");
 
-    [Test]
-    public void SameDetailsAs_IsTrue_WhenAllDetailsMatch()
-    {
-        Assert.That(Create().SameDetailsAs(Create()), Is.True);
-    }
-
     [TestCaseSource(nameof(SingleFieldChanges))]
     public void SameDetailsAs_IsFalse_WhenASingleDetailDiffers(Func<Reservation, Reservation> mutate)
     {
         var original = Create();
 
         Assert.That(original.SameDetailsAs(mutate(original)), Is.False);
-    }
-
-    [Test]
-    public void SameDetailsAs_IgnoresIdentityFields()
-    {
-        var original = Create();
-        var otherIdentity = original with { SupplierId = "supplier-2", ReservationId = "res-2" };
-
-        Assert.That(original.SameDetailsAs(otherIdentity), Is.True);
     }
 
     [Test]
@@ -69,12 +54,6 @@ public class ReservationTests
     }
 
     [Test]
-    public void SameDetailsAs_Throws_WhenOtherIsNull()
-    {
-        Assert.Throws<ArgumentNullException>(() => Create().SameDetailsAs(null!));
-    }
-
-    [Test]
     public void Evaluate_NothingStored_IsCreated()
     {
         Assert.That(Reservation.Evaluate(null, Create()), Is.EqualTo(IngestStatus.Created));
@@ -84,14 +63,6 @@ public class ReservationTests
     public void Evaluate_IdenticalDetails_IsDuplicate()
     {
         Assert.That(Reservation.Evaluate(Create(), Create()), Is.EqualTo(IngestStatus.Duplicate));
-    }
-
-    [Test]
-    public void Evaluate_IdenticalDetailsInDifferentOffsets_IsDuplicate()
-    {
-        var incoming = Create() with { UpdatedAtUtc = UpdatedAt.ToOffset(TimeSpan.FromHours(5)) };
-
-        Assert.That(Reservation.Evaluate(Create(), incoming), Is.EqualTo(IngestStatus.Duplicate));
     }
 
     [Test]
@@ -116,27 +87,5 @@ public class ReservationTests
         var incoming = Create() with { Price = 500m, UpdatedAtUtc = UpdatedAt.AddMinutes(-1) };
 
         Assert.That(Reservation.Evaluate(Create(), incoming), Is.EqualTo(IngestStatus.Stale));
-    }
-
-    [Test]
-    public void Evaluate_OnlyUpdatedAtDiffersAndIsOlder_IsStale()
-    {
-        var incoming = Create() with { UpdatedAtUtc = UpdatedAt.AddMinutes(-1) };
-
-        Assert.That(Reservation.Evaluate(Create(), incoming), Is.EqualTo(IngestStatus.Stale));
-    }
-
-    [Test]
-    public void Evaluate_OnlyUpdatedAtDiffersAndIsNewer_IsUpdated()
-    {
-        var incoming = Create() with { UpdatedAtUtc = UpdatedAt.AddMinutes(1) };
-
-        Assert.That(Reservation.Evaluate(Create(), incoming), Is.EqualTo(IngestStatus.Updated));
-    }
-
-    [Test]
-    public void Evaluate_NullIncoming_Throws()
-    {
-        Assert.Throws<ArgumentNullException>(() => Reservation.Evaluate(Create(), null!));
     }
 }

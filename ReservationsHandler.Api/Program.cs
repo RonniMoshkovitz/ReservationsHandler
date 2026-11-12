@@ -1,4 +1,5 @@
 using ReservationsHandler.Api.Data;
+using ReservationsHandler.Api.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -6,6 +7,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddDataAccess();
+builder.Services.AddRateLimiting();
 
 var app = builder.Build();
 

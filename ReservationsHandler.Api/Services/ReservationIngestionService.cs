@@ -14,15 +14,18 @@ public sealed class ReservationIngestionService : IReservationIngestionService
     private readonly IRateLimiter _rateLimiter;
     private readonly IReservationRepository _reservations;
     private readonly ISupplierStatsRepository _stats;
+    private readonly ILogger<ReservationIngestionService> _logger;
 
     public ReservationIngestionService(
         IRateLimiter rateLimiter,
         IReservationRepository reservations,
-        ISupplierStatsRepository stats)
+        ISupplierStatsRepository stats,
+        ILogger<ReservationIngestionService> logger)
     {
         _rateLimiter = rateLimiter;
         _reservations = reservations;
         _stats = stats;
+        _logger = logger;
     }
 
     public async Task<IngestResult> IngestAsync(Reservation reservation, CancellationToken cancellationToken = default)
@@ -36,10 +39,42 @@ public sealed class ReservationIngestionService : IReservationIngestionService
         if (!rateLimit.Permitted)
         {
             await _stats.IncrementThrottledAsync(reservation.SupplierId, cancellationToken);
+
+            // Logged after the request was counted, and at Warning because a supplier over its limit is worth
+            // noticing. Under a flood this is one line per rejected request.
+            _logger.LogWarning(
+                "Supplier {SupplierId} exceeded its rate limit; request rejected, retry after {RetryAfterSeconds:F1} s",
+                reservation.SupplierId,
+                rateLimit.RetryAfter.TotalSeconds);
+
             return IngestResult.Throttled(rateLimit.RetryAfter);
         }
 
+        // A failure here is deliberately not caught and logged: it propagates to GlobalExceptionHandler, which logs
+        // it once, with the stack trace. Logging it here as well would report the same failure twice.
         var status = await _reservations.UpsertAsync(reservation, cancellationToken);
+        LogProcessed(status, reservation);
+
         return IngestResult.Processed(status);
+    }
+
+    private void LogProcessed(IngestStatus status, Reservation reservation)
+    {
+        if (status == IngestStatus.Stale)
+        {
+            // An out-of-order update is unusual enough to show in production logs.
+            _logger.LogInformation(
+                "Ignored stale update for reservation {ReservationId} from supplier {SupplierId}: the stored version is newer",
+                reservation.ReservationId,
+                reservation.SupplierId);
+            return;
+        }
+
+        // Created, Updated and Duplicate are the routine outcomes: Debug, so they cost nothing in production.
+        _logger.LogDebug(
+            "Reservation {ReservationId} from supplier {SupplierId} was {Status}",
+            reservation.ReservationId,
+            reservation.SupplierId,
+            status);
     }
 }

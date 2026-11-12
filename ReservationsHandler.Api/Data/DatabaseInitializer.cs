@@ -27,15 +27,19 @@ public sealed class DatabaseInitializer
         """;
 
     private readonly IDbConnectionFactory _connectionFactory;
+    private readonly ILogger<DatabaseInitializer> _logger;
 
-    public DatabaseInitializer(IDbConnectionFactory connectionFactory)
+    public DatabaseInitializer(IDbConnectionFactory connectionFactory, ILogger<DatabaseInitializer> logger)
     {
         _connectionFactory = connectionFactory;
+        _logger = logger;
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
         await connection.ExecuteAsync(new CommandDefinition(Schema, cancellationToken: cancellationToken));
+
+        _logger.LogInformation("Database schema is ready (data source: {DataSource})", connection.DataSource);
     }
 }

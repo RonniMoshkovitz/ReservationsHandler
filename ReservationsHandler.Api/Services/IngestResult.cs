@@ -25,5 +25,6 @@ public sealed record IngestResult
         ? throw new ArgumentException($"Use {nameof(Throttled)} for a throttled request.", nameof(status))
         : new IngestResult(status, retryAfter: null);
 
+    /// <summary>The supplier exceeded its rate limit, <paramref name="retryAfter"/> is how long until it may retry.</summary>
     public static IngestResult Throttled(TimeSpan retryAfter) => new(IngestStatus.Throttled, retryAfter);
 }

@@ -9,5 +9,10 @@ public interface IReservationIngestionService
     /// reservation according to the dedup rules.
     /// </summary>
     /// <param name="reservation">An already validated reservation.</param>
+    /// <returns>
+    /// Created, Updated, Duplicate or Stale when the request was processed; Throttled (with a retry delay) when the
+    /// supplier is over its limit. A throttled request is an expected outcome, not an exception. Failures of the
+    /// database, and cancellation, propagate as exceptions.
+    /// </returns>
     Task<IngestResult> IngestAsync(Reservation reservation, CancellationToken cancellationToken = default);
 }

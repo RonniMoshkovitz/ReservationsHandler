@@ -50,8 +50,8 @@ public sealed class ReservationIngestionService : IReservationIngestionService
             return IngestResult.Throttled(rateLimit.RetryAfter);
         }
 
-        // A failure here is deliberately not caught and logged: it propagates to GlobalExceptionHandler, which logs
-        // it once, with the stack trace. Logging it here as well would report the same failure twice.
+        // A failure here is deliberately not caught and logged: it propagates to ASP.NET's exception handler
+        // middleware, which logs it once, with the stack trace (GlobalExceptionHandler then shapes the 500). Logging it here as well would report the same failure twice.
         var status = await _reservations.UpsertAsync(reservation, cancellationToken);
         LogProcessed(status, reservation);
 

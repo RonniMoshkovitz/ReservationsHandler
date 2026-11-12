@@ -29,7 +29,6 @@ if (app.Environment.IsDevelopment())
     app.UseApiDocumentation();
 }
 
-app.UseHttpsRedirection();
 app.MapControllers();
 
 app.Run();

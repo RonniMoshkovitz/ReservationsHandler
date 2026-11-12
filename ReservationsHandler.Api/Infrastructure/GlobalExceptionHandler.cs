@@ -4,29 +4,17 @@ using Microsoft.AspNetCore.Mvc;
 namespace ReservationsHandler.Api.Infrastructure;
 
 /// <summary>
-/// Turns an unexpected exception into a 500 ProblemDetails response. The exception is logged with its stack
-/// trace, but nothing about it (message, type, stack) is sent to the client.
+/// Turns an unexpected exception into a 500 ProblemDetails response. Nothing about the exception (message, type,
+/// stack) is sent to the client. It is not logged here: ASP.NET's exception handler middleware already logs it at
+/// Error level with its stack trace, so logging it again would report the same failure twice.
 /// </summary>
 public sealed class GlobalExceptionHandler : IExceptionHandler
 {
-    private readonly ILogger<GlobalExceptionHandler> _logger;
-
-    public GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger)
-    {
-        _logger = logger;
-    }
-
     public async ValueTask<bool> TryHandleAsync(
         HttpContext httpContext,
         Exception exception,
         CancellationToken cancellationToken)
     {
-        _logger.LogError(
-            exception,
-            "Unhandled exception while processing {Method} {Path}",
-            httpContext.Request.Method,
-            httpContext.Request.Path);
-
         var problem = new ProblemDetails
         {
             Status = StatusCodes.Status500InternalServerError,

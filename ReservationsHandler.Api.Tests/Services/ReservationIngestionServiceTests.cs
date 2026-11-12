@@ -149,6 +149,27 @@ public class ReservationIngestionServiceTests
     }
 
     [Test]
+    public void ACancelledRepositoryCall_PropagatesTheCancellation_AndIsNotTurnedIntoAResult()
+    {
+        _reservations.ExceptionToThrow = new OperationCanceledException();
+
+        Assert.That(async () => await _service.IngestAsync(Create()), Throws.InstanceOf<OperationCanceledException>());
+    }
+
+    [Test]
+    public void ACancelledThrottledCounterWrite_PropagatesTheCancellation_AndTheRepositoryIsStillNotCalled()
+    {
+        _limiter.Result = RateLimitResult.Reject(TimeSpan.FromSeconds(1));
+        _stats.ExceptionToThrow = new OperationCanceledException();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(async () => await _service.IngestAsync(Create()), Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(_reservations.Upserted, Is.Empty);
+        });
+    }
+
+    [Test]
     public void ANullReservation_IsRejected_BeforeAnyCollaboratorIsCalled()
     {
         Assert.Multiple(() =>
@@ -182,6 +203,30 @@ public class ReservationIngestionServiceTests
                 Is.All.EqualTo(TimeSpan.FromSeconds(10)));
             Assert.That(_reservations.Upserted, Has.Count.EqualTo(3), "throttled requests never reach the repository");
             Assert.That(_stats.ThrottledSupplierIds, Is.EqualTo(new[] { "supplier-1", "supplier-1" }));
+        });
+    }
+
+    // The assignment throttles on requests SENT, not on reservations saved, so a resend that the repository
+    // reports as Duplicate or Stale must still use up the supplier's quota.
+    [TestCase(IngestStatus.Duplicate)]
+    [TestCase(IngestStatus.Stale)]
+    public async Task WithTheRealLimiter_DuplicateAndStaleRequestsStillConsumeQuota(IngestStatus repositoryStatus)
+    {
+        var time = new FakeTimeProvider();
+        var limiter = new SlidingWindowRateLimiter(
+            Options.Create(new RateLimitOptions { PermitLimit = 1, Window = TimeSpan.FromSeconds(10) }),
+            time);
+        var service = new ReservationIngestionService(limiter, _reservations, _stats);
+        _reservations.Status = repositoryStatus;
+
+        var first = await service.IngestAsync(Create());
+        var second = await service.IngestAsync(Create());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(first, Is.EqualTo(IngestResult.Processed(repositoryStatus)));
+            Assert.That(second.Status, Is.EqualTo(IngestStatus.Throttled));
+            Assert.That(_reservations.Upserted, Has.Count.EqualTo(1), "the second request never reached the repository");
         });
     }
 
